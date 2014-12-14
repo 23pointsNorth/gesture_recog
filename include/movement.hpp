@@ -4,7 +4,7 @@
 #include <opencv2/core/core.hpp>
 
 #define MOVEMENT_THERSHOLD  10
-#define MOVEMENT_DURATION 	5
+#define MOVEMENT_DURATION 	2
 
 #define MOVEMENT_BACKGROUND 0
 #define MOVEMENT_FOREGROUND 255

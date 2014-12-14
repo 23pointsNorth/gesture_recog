@@ -17,8 +17,8 @@ void MovementExtractor::UpdateModel(const Mat& image, Mat& movement)
 	CV_Assert(!image.empty());
 
 
-	imshow("img", image);
-	imshow("background", background);
+	// imshow("img", image);
+	// imshow("background", background);
 	//waitKey();
 
 	movement = Mat::zeros(image.size(), CV_8UC1);
@@ -43,7 +43,7 @@ void MovementExtractor::UpdateModel(const Mat& image, Mat& movement)
 
 			if(movement_durations.at<uchar>(i, j) > MOVEMENT_DURATION)
 			{
-				background.at<Vec3b>(i, j) = new_pxl * 0.05 + old * 0.95; //(new_pxl + old) * 0.5;
+				background.at<Vec3b>(i, j) = new_pxl * 0.95 + old * 0.05; //(new_pxl + old) * 0.5;
 			}
 		}
 	}

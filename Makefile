@@ -5,6 +5,8 @@ CFLAGS 	= -c -O3 -Wall -fPIC -I ./include/
 CFLAGS 		+= $(shell pkg-config opencv --cflags) 
 LDFLAGS 	+= $(shell pkg-config opencv --libs)
 
+LDFLAGS += -lX11 -lXtst -lXext
+
 SOURCES		= $(wildcard ./src/*.cpp)
 
 OBJECTS		= $(SOURCES:.cpp=.o)

@@ -1,15 +1,34 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+
+#include "mouse.hpp"
 #include "movement.hpp"
+#include "classifier.hpp"
+#include "virtualHID.hpp"
+
 #include <iostream>
+
 using namespace cv;
 using namespace std;
 
-int findBiggestContour(vector<vector<Point> > contours);
-void detect_skin(const Mat& frame, Mat& skin);
+
+void preprocessImage(const Mat& src, Mat& blur, Mat& hsv);
+void teachClassifier(const Mat& src, Classifier& cls, MouseData& mouse);
+void skinSegmentation(const Mat& src, Classifier& cls, Mat& seg, Mat& morph);
+void shapeAnalysis(const Mat& morph, Mat& skin);
+
+VirtualHID vhid;
+bool move_mouse = false;
 
 int main()
 {
+    Mat src, blur, hsv, movement, seg, morph, skin;
+    Classifier seg_cls;
+    MouseData mouse;
+
+    namedWindow("Image");
+    setMouseCallback("Image", onMouse, &mouse);
+
     VideoCapture cam(0);
     if (!cam.isOpened())
     {
@@ -17,78 +36,169 @@ int main()
         return 0;
     }
 
-    Mat src, movement, skin;
+    // Read one frame
     cam >> src;
-
+    
+    // Initialize foreground 
     MovementExtractor fg(src);
+
     char key;
-    do{
+    do
+    {
         cam >> src;
         if (src.empty())
             return -1;
 
+        // Preprocess the image
+        preprocessImage(src, blur, hsv);
+
+        // Teach classifier
+        teachClassifier(hsv, seg_cls, mouse);
+
+        // Skin detection
+        skinSegmentation(hsv, seg_cls, seg, morph);
+
+        // Shape analysis
+        shapeAnalysis(morph, skin);
+
+        // Movement
         fg.UpdateModel(src, movement);
         fg.RefineMovement(movement);
+        
+        // Mat joint;
+        // bitwise_and(movement, skin, joint);
+        // imshow("Joint Mat", joint);
+
+        // Display degug info
+        imshow("Image", src);
+        imshow("Segmented", seg);
+        imshow("Morphed", morph);
+        imshow("Skin", skin);
         imshow("Movement", movement);
 
-        detect_skin(src, skin);
-        imshow("Skin", skin);
-
-        Mat joint;
-        bitwise_and(movement, skin, joint);
-
-        imshow("Joint Mat", joint);
-
         key = waitKey(10);
-    }while(key != 'q');
+
+        if(key == 'm')
+        {
+            move_mouse = !move_mouse;
+        }
+    }
+    while(key != 'q');
+    
     return 0;
 }
 
-int findBiggestContour(vector<vector<Point> > contours){
-    int maxIdx = -1;
-    double maxArea = 0;
-    for (unsigned int i = 0; i < contours.size(); i++){
+void preprocessImage(const Mat& src, Mat& blur, Mat& hsv)
+{
+    // Blur the image       
+    GaussianBlur(src, blur, Size(3, 3), 0, 0);
 
-        double area = contourArea(contours[i]);
-        if(area > maxArea){
-            maxArea = area;
-            maxIdx = i;
+    // Convert 
+    cvtColor(blur, hsv, COLOR_BGR2HSV);
+
+    // Offset the H component
+    for(int i = 0; i < hsv.rows; ++i)
+    {
+        for(int j = 0; j < hsv.cols; ++j)
+        {
+            int idx = (i * hsv.cols + j) * 3;
+            hsv.data[idx] = ((int)hsv.data[idx] + 90) % 180;
         }
     }
-    return maxIdx;
 }
 
-
-void detect_skin(const Mat& frame, Mat& skin)
+void skinSegmentation(const Mat& src, Classifier& cls, Mat& seg, Mat& morph)
 {
-    skin = Mat::zeros(frame.size(), CV_8UC1);
-    blur(frame, frame, Size(3, 3));
+    static int erosion_size = 1;
+    static Mat element = 
+        getStructuringElement(MORPH_RECT,
+                              Size(2*erosion_size + 1, 2*erosion_size+1),
+                              Point(erosion_size, erosion_size));
 
-    Mat hsv;
-    cvtColor(frame, hsv, COLOR_BGR2HSV);
+    if(seg.empty())
+    {
+        seg = Mat(src.rows, src.cols, CV_8UC1);
+    }
 
-    Mat bw;
-    inRange(hsv, Scalar(0, 10, 60), Scalar(20, 150, 255), bw);
-    dilate(bw, bw, Mat());
+    for(int i = 0; i < src.rows; ++i)
+    {
+        for(int j = 0; j < src.cols; ++j)
+        {
+            int idx = (i * src.cols + j) * 3;
 
-    imshow("All Skin", bw);
+            Point3i pt = Point3i(src.data[idx], 
+                                 src.data[idx + 1], 
+                                 src.data[idx + 2]);
+            
+            PixelClass c = cls.Gaussian(pt);
 
+            int clr = (c == SKIN) ? 255: 0;
+
+            seg.data[i * src.cols + j] = clr;
+        }
+    }
+
+    erode(seg, morph, element);
+    dilate(morph, morph, element);
+    dilate(morph, morph, element);
+    
+
+}
+
+void teachClassifier(const Mat& src, Classifier& cls, MouseData& mouse)
+{
+    if(mouse.l_up)
+    {
+        int idx = mouse.y * src.cols * 3 + mouse.x * 3;
+        Point3i pt = Point3i(src.data[idx], 
+                             src.data[idx + 1], 
+                             src.data[idx + 2]);
+        
+        cls.AddPoint(pt);
+        mouse.l_up = false;
+
+        cls.LearnGaussian();
+    }
+}
+
+void shapeAnalysis(const Mat& morph, Mat& skin)
+{
     vector<vector<Point> > contours;
     vector<Vec4i> hierarchy;
 
-    findContours(bw, contours, hierarchy, RETR_TREE, CHAIN_APPROX_SIMPLE);
+    skin = Mat::zeros(morph.rows, morph.cols, CV_8UC1);
+    
+
+    findContours(morph.clone(), contours, hierarchy, CV_RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
     if (contours.empty()) return;
 
-    int s = findBiggestContour(contours);
-    vector<vector<Point> > hull(1);
-    convexHull(Mat(contours[s]), hull[0], false);
-    //RotatedRect el = fitElipse(hull[0]);
+    // Get fisrt and second largest contours (head & hand)
+    int f = -1, s = -1;
+    double maxArea = 0;
+    for (size_t i = 0; i < contours.size(); i++)
+    {
+        double area = contourArea(contours[i]);
+        if(area > maxArea)
+        {
+            maxArea = area;
+            s = f;
+            f = i;
+        }
+    }
 
-    Mat fskin = Mat::zeros(frame.size(), CV_8UC1);
-    drawContours(fskin, contours, s, Scalar(255), FILLED, 8, hierarchy, 0, Point());
-    drawContours(skin, contours, s, Scalar(255), FILLED, 8, hierarchy, 0, Point());
-    Scalar color = Scalar(255, 128, 128);
-    drawContours(fskin, hull, 0, color, 5); // 8, vector<Vec4i>(), 0, Point()
+    drawContours(skin, contours, f, Scalar(255), CV_FILLED, 8, hierarchy, 0, Point());
 
-    imshow("Feature skin", fskin);
+    Point cntr = Point(0, 0);    
+    for (size_t i = 0; i < contours[f].size(); i++)
+    {
+        cntr += contours[f][i];
+    }
+    cntr *= 1.0 / contours[f].size();
+
+    cout << "Mouse @ " << cntr << endl; 
+
+    if(move_mouse)
+    {
+        vhid.MoveMouse(cntr.x, cntr.y);
+    }
 }
