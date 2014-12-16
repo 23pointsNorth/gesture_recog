@@ -15,16 +15,25 @@ using namespace std;
 void preprocessImage(const Mat& src, Mat& blur, Mat& hsv);
 void teachClassifier(const Mat& src, Classifier& cls, MouseData& mouse);
 void skinSegmentation(const Mat& src, Classifier& cls, Mat& seg, Mat& morph);
-void shapeAnalysis(const Mat& morph, Mat& skin);
+void skinAnalysis(const Mat& morph, Mat& skin);
+vector<double> handAnalysis(const Mat& moving_skin);
+vector<Point2d> getEigenVectors(vector<Point> &pts);
+
+// Utility functions
+int findLargestContour(vector< vector<Point> > contours);
+Point findContourCenter(vector<Point> contour);
 
 VirtualHID vhid;
 bool move_mouse = false;
 
 int main()
 {
-    Mat src, blur, hsv, movement, seg, morph, skin;
+    Mat src, roi, blur, hsv, movement, seg, morph, skin, moving_skin;
     Classifier seg_cls;
     MouseData mouse;
+
+    const Rect roi_rect(0, 0, 400, 300);
+
 
     namedWindow("Image");
     setMouseCallback("Image", onMouse, &mouse);
@@ -38,9 +47,9 @@ int main()
 
     // Read one frame
     cam >> src;
-    
+
     // Initialize foreground 
-    MovementExtractor fg(src);
+    MovementExtractor fg(src(roi_rect));
 
     char key;
     do
@@ -49,8 +58,12 @@ int main()
         if (src.empty())
             return -1;
 
+        // Get the ROI 
+        roi = src(roi_rect).clone();
+    
+        
         // Preprocess the image
-        preprocessImage(src, blur, hsv);
+        preprocessImage(roi, blur, hsv);
 
         // Teach classifier
         teachClassifier(hsv, seg_cls, mouse);
@@ -58,29 +71,42 @@ int main()
         // Skin detection
         skinSegmentation(hsv, seg_cls, seg, morph);
 
-        // Shape analysis
-        shapeAnalysis(morph, skin);
+        // Analysis of the detected skin pixels
+        skinAnalysis(morph, skin);
 
         // Movement
-        fg.UpdateModel(src, movement);
+        fg.UpdateModel(roi, movement);
         fg.RefineMovement(movement);
         
-        // Mat joint;
-        // bitwise_and(movement, skin, joint);
-        // imshow("Joint Mat", joint);
+        // Find moving skin
+        bitwise_and(movement, skin, moving_skin);
+        
+        // Extract hand descriptor
+        handAnalysis(moving_skin);
 
         // Display degug info
+        rectangle(src, roi_rect, Scalar(0, 0, 255), 2);
         imshow("Image", src);
         imshow("Segmented", seg);
         imshow("Morphed", morph);
         imshow("Skin", skin);
         imshow("Movement", movement);
+        imshow("Joint Mat", moving_skin);
 
         key = waitKey(10);
 
-        if(key == 'm')
+        switch(key)
         {
-            move_mouse = !move_mouse;
+            case 'm':
+            {
+                move_mouse = !move_mouse;
+                break;    
+            }
+            case 'b':
+            {
+                fg.SetBackground(roi);
+                break;
+            }
         }
     }
     while(key != 'q');
@@ -109,11 +135,7 @@ void preprocessImage(const Mat& src, Mat& blur, Mat& hsv)
 
 void skinSegmentation(const Mat& src, Classifier& cls, Mat& seg, Mat& morph)
 {
-    static int erosion_size = 1;
-    static Mat element = 
-        getStructuringElement(MORPH_RECT,
-                              Size(2*erosion_size + 1, 2*erosion_size+1),
-                              Point(erosion_size, erosion_size));
+    
 
     if(seg.empty())
     {
@@ -138,9 +160,12 @@ void skinSegmentation(const Mat& src, Classifier& cls, Mat& seg, Mat& morph)
         }
     }
 
-    erode(seg, morph, element);
-    dilate(morph, morph, element);
-    dilate(morph, morph, element);
+    static Mat element = cv::getStructuringElement(MORPH_RECT, cv::Size(5, 5), Point(3, 3));
+    cv::morphologyEx(seg, morph, MORPH_OPEN, element);
+
+    // erode(seg, morph, element);
+    // dilate(morph, morph, element);
+    // dilate(morph, morph, element);
     
 
 }
@@ -161,7 +186,7 @@ void teachClassifier(const Mat& src, Classifier& cls, MouseData& mouse)
     }
 }
 
-void shapeAnalysis(const Mat& morph, Mat& skin)
+void skinAnalysis(const Mat& morph, Mat& skin)
 {
     vector<vector<Point> > contours;
     vector<Vec4i> hierarchy;
@@ -172,8 +197,95 @@ void shapeAnalysis(const Mat& morph, Mat& skin)
     findContours(morph.clone(), contours, hierarchy, CV_RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
     if (contours.empty()) return;
 
-    // Get fisrt and second largest contours (head & hand)
-    int f = -1, s = -1;
+    int idx = findLargestContour(contours);
+    
+    drawContours(skin, contours, idx, Scalar(255), CV_FILLED, 8, hierarchy, 0, Point());
+
+    // cout << " R:" << contourArea(contours[f]) / boundingRect(contours[f]).area() << endl;
+    
+    // if(move_mouse)
+    // {
+    //     vhid.MoveMouse(cntr.x, cntr.y);
+    // }
+}
+
+vector<double> handAnalysis(const Mat& moving_skin)
+{
+    vector<double> descriptor;
+
+    Mat hand_img = Mat::zeros(moving_skin.rows, moving_skin.cols, CV_8UC3);
+
+    vector< vector<Point> > contours;
+    vector<Vec4i> hierarchy;
+    
+    findContours(moving_skin.clone(), contours, hierarchy, CV_RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+    if (contours.empty()) return descriptor;
+
+    int idx = findLargestContour(contours);
+    vector<Point>& hand = contours[idx];
+    
+    drawContours(hand_img, contours, idx, Scalar(255, 255, 255), 2, 8, hierarchy, 0, Point());
+
+    vector<Point2d> vecs = getEigenVectors(contours[idx]);
+
+    
+
+    vector<double> dists;
+    for(size_t i = 0; i < hand.size(); ++i)
+    {
+        double dist = (hand[i].x - vecs.back().x) * (hand[i].x - vecs.back().x);
+        dist += (hand[i].y - vecs.back().y) * (hand[i].y - vecs.back().y);
+
+        dists.push_back(dist);
+    }
+
+    circle(hand_img, vecs.back(), 3, CV_RGB(255, 0, 255), 2);
+    line(hand_img, vecs.back(), vecs.back() + vecs[0], CV_RGB(255, 255, 0));
+    line(hand_img, vecs.back(), vecs.back() + vecs[1], CV_RGB(0, 255, 255));
+    imshow("Hand", hand_img);
+
+    return descriptor;
+}
+
+vector<Point2d> getEigenVectors(vector<Point> &pts)
+{
+    //Construct a buffer used by the pca analysis
+    Mat data_pts = Mat(pts.size(), 2, CV_64FC1);
+    for (int i = 0; i < data_pts.rows; ++i)
+    {
+        data_pts.at<double>(i, 0) = pts[i].x;
+        data_pts.at<double>(i, 1) = pts[i].y;
+    }
+ 
+    //Perform PCA analysis
+    PCA pca_analysis(data_pts, Mat(), CV_PCA_DATA_AS_ROW);
+    
+    //Store the position of the object
+    Point2d pos = Point(pca_analysis.mean.at<double>(0, 0),
+                        pca_analysis.mean.at<double>(0, 1));
+
+    //Store the eigenvalues and eigenvectors
+    vector<Point2d> eigen_vecs(2);
+    vector<double> eigen_vals(2);
+    for (int i = 0; i < 2; ++i)
+    {
+        eigen_vecs[i] = Point2d(pca_analysis.eigenvectors.at<double>(i, 0),
+                                pca_analysis.eigenvectors.at<double>(i, 1));
+ 
+        eigen_vals[i] = pca_analysis.eigenvalues.at<double>(0, i);
+
+        eigen_vecs[i] *= sqrt(eigen_vals[i]);
+    }
+    
+    eigen_vecs.push_back(pos);
+    
+    return eigen_vecs;
+}
+
+int findLargestContour(vector< vector<Point> > contours)
+{
+    // Get the largest contour
+    int idx = -1;
     double maxArea = 0;
     for (size_t i = 0; i < contours.size(); i++)
     {
@@ -181,24 +293,20 @@ void shapeAnalysis(const Mat& morph, Mat& skin)
         if(area > maxArea)
         {
             maxArea = area;
-            s = f;
-            f = i;
+            idx = i;
         }
     }
 
-    drawContours(skin, contours, f, Scalar(255), CV_FILLED, 8, hierarchy, 0, Point());
+    return idx;
+}
 
-    Point cntr = Point(0, 0);    
-    for (size_t i = 0; i < contours[f].size(); i++)
+Point findContourCenter(vector<Point> contour)
+{
+    Point cntr = Point(-1, -1);    
+    for (size_t i = 0; i < contour.size(); i++)
     {
-        cntr += contours[f][i];
+        cntr += contour[i];
     }
-    cntr *= 1.0 / contours[f].size();
-
-    cout << "Mouse @ " << cntr << endl; 
-
-    if(move_mouse)
-    {
-        vhid.MoveMouse(cntr.x, cntr.y);
-    }
+    cntr *= 1.0 / contour.size();
+    return cntr;
 }

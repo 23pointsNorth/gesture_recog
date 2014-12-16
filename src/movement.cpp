@@ -9,7 +9,11 @@ using namespace cv;
 MovementExtractor::MovementExtractor(const Mat& init)
 {
 	init.copyTo(background);
-	movement_durations = Mat::zeros(background.size(), CV_8UC1);
+}
+
+void MovementExtractor::SetBackground(const cv::Mat& new_bg)
+{
+	new_bg.copyTo(background);
 }
 
 void MovementExtractor::UpdateModel(const Mat& image, Mat& movement)
@@ -28,22 +32,12 @@ void MovementExtractor::UpdateModel(const Mat& image, Mat& movement)
 	{
 		for(int j = 0; j < image.cols; ++j)
 		{
-			Vec3b old = background.at<Vec3b>(i, j);
-			Vec3b new_pxl = image.at<Vec3b>(i, j);
+			const Vec3b& old = background.at<Vec3b>(i, j);
+			const Vec3b& new_pxl = image.at<Vec3b>(i, j);
 
 			if(norm(old - new_pxl) > MOVEMENT_THERSHOLD)
 			{
 				movement.at<uchar>(i, j) = MOVEMENT_FOREGROUND;
-				movement_durations.at<uchar>(i, j)++;
-			}
-			else
-			{
-				movement_durations.at<uchar>(i, j) = 0;
-			}
-
-			if(movement_durations.at<uchar>(i, j) > MOVEMENT_DURATION)
-			{
-				background.at<Vec3b>(i, j) = new_pxl * 0.95 + old * 0.05; //(new_pxl + old) * 0.5;
 			}
 		}
 	}
@@ -52,8 +46,7 @@ void MovementExtractor::UpdateModel(const Mat& image, Mat& movement)
 
 void MovementExtractor::RefineMovement(cv::Mat& movement)
 {
-	Mat element = cv::getStructuringElement(MORPH_RECT, cv::Size(3, 3), Point(0, 0));
+	Mat element = cv::getStructuringElement(MORPH_RECT, cv::Size(3, 3), Point(1, 1));
 
- 	cv::morphologyEx(movement, movement, MORPH_OPEN, element, Point(-1, -1), 2); // 2 iternations
-	cv::morphologyEx(movement, movement, MORPH_CLOSE, element, Point(-1, -1), 2);
+ 	cv::morphologyEx(movement, movement, MORPH_OPEN, element);
 }
