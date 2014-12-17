@@ -1,5 +1,5 @@
-#ifndef VIRTUAL_HID_HEADER
-#define VIRTUAL_HID_HEADER
+#ifndef VIRTUAL_HID_HPP
+#define VIRTUAL_HID_HPP
 
 #include <opencv2/opencv.hpp>
 
@@ -14,10 +14,10 @@ class VirtualHID
 
 		//Monitor
 		void TakeScreenshot(cv::Mat& image);
-		
+
 		//Keyboard
 		void ClickKey(KeySym keysym);
-		
+
 		//Mouse
 		void MouseDown(unsigned int button);
 		void MouseUp(unsigned int button);

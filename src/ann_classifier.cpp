@@ -2,6 +2,8 @@
 #include <opencv2/ml/ml.hpp>
 #include <cstring>
 
+#include <iostream>
+
 using namespace std;
 using namespace cv;
 
@@ -67,9 +69,35 @@ void GestureClassifier::Save(const string filename)
 
 void GestureClassifier::LoadTrainingData(string training_data_file, Mat& inputs, Mat& outputs)
 {
-	FileStorage fs(training_data_file, FileStorage::READ);
-    fs["inputs"] >> inputs;
-    fs["outputs"] >> outputs;
+	// FileStorage fs(training_data_file, FileStorage::READ);
+    // fs["inputs"] >> inputs;
+    // fs["outputs"] >> outputs;
+
+	Mat row;
+	int label;
+
+    FileStorage fs(training_data_file, FileStorage::READ);
+    int len = 0;
+    fs["len"] >> len;
+
+    for(int i = 0; i < len; ++i)
+    {
+        ostringstream oss;
+        oss << i;
+        // TODO: Make the row a new datasample in the input matrix
+        fs["data" + oss.str()] >> row;
+    }
+
+    for(int i = 0; i < len; ++i)
+    {
+        ostringstream oss;
+        oss << i;
+        // TODO: Make the label variable in the output matrix
+        fs["label" + oss.str()] >> label;
+        cout << label << endl;
+    }
+    fs.release();
+
 }
 
 int GestureClassifier::TrainOnFileData(string training_data_file)

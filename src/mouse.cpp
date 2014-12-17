@@ -8,7 +8,7 @@ void onMouse(int event, int x, int y, int flags, void* param)
     m->event = event;
     m->x = x;
     m->y = y;
-    
+
     switch (event)
     {
         case CV_EVENT_LBUTTONUP:
@@ -24,7 +24,7 @@ void onMouse(int event, int x, int y, int flags, void* param)
             m->r_down = true;
             break;
         case CV_EVENT_MOUSEMOVE:
-            m->move = true; 
+            m->move = true;
             break;
         default:
             break;

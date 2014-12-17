@@ -25,16 +25,16 @@ void VirtualHID::TakeScreenshot(cv::Mat& image)
 	{
 		for (int j = 0; j < resolution.width; ++j)
 		{
-			pixel = XGetPixel(x_image, j, i);			
-			
+			pixel = XGetPixel(x_image, j, i);
+
 			color[0] = (pixel & 0xFF);
 			color[1] = (pixel & 0xFF00) >> 8;
 			color[2] = (pixel & 0xFF0000) >> 16;
 
 			image.at<cv::Vec3b>(i, j) = color;
-		}		
+		}
 	}
-	XFree (x_image);	
+	XFree (x_image);
 }
 
 void VirtualHID::ClickKey(KeySym keysym)
@@ -64,5 +64,5 @@ void VirtualHID::MoveMouse(int x, int y)
 
 void VirtualHID::MoveMouseRelative(int x, int y)
 {
-	XTestFakeRelativeMotionEvent(display, x, y, CurrentTime);	
+	XTestFakeRelativeMotionEvent(display, x, y, CurrentTime);
 };

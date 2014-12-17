@@ -7,7 +7,7 @@
 #include <cstring>
 
 const int NUM_OF_LAYERS = 3;
-const int NUM_OF_INPUTS = 180;
+const int NUM_OF_INPUTS = 360;
 
 const int NUM_OF_HAND_GESTURES = 4;
 enum HandGestures {
@@ -30,7 +30,7 @@ public:
 	void Load(const std::string filename);
 	void LoadTrainingData(std::string training_data_file, cv::Mat& inputs, cv::Mat& outputs);
 	int TrainOnFileData(std::string training_data_file);
-	~GestureClassifier();
+	~GestureClassifier() {}
 
 private:
 	CvANN_MLP ann;

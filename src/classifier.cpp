@@ -1,5 +1,4 @@
 #include "classifier.hpp"
-#include "utils.hpp"
 #include <iostream>
 
 using namespace std;
@@ -24,7 +23,7 @@ void Classifier::LearnGaussian()
 	}
 
 	getMeanVar(data, mean_h, var_h);
-	
+
 	double norm_factor = 1.0 / sqrt(var_h * 2 * M_PI);
 	thresh_h =  0.2 * norm_factor;
 
@@ -34,7 +33,7 @@ void Classifier::LearnGaussian()
 	}
 
 	getMeanVar(data, mean_s, var_s);
-	
+
 	norm_factor = 1.0 / sqrt(var_s * 2 * M_PI);
 	thresh_s =  0.2 * norm_factor;
 
@@ -44,7 +43,7 @@ void Classifier::LearnGaussian()
 	}
 
 	getMeanVar(data, mean_v, var_v);
-	
+
 	norm_factor = 1.0 / sqrt(var_v * 2 * M_PI);
 	thresh_v =  0.2 * norm_factor;
 
@@ -59,7 +58,7 @@ PixelClass Classifier::Gaussian(cv::Point3i& pnt)
 {
 	double p_h = exp(-((pnt.x - mean_h) * (pnt.x - mean_h) / 2 / var_h)) / sqrt(var_h * 2 * M_PI);
 	double p_s = exp(-((pnt.y - mean_s) * (pnt.y - mean_s) / 2 / var_s)) / sqrt(var_s * 2 * M_PI);
-	
+
 	return (p_h * p_s > thresh_h * thresh_s) ? SKIN : BACKGROUND;
 }
 

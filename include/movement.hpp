@@ -1,5 +1,5 @@
-#ifndef MOVEMENT_HPP_
-#define MOVEMENT_HPP_
+#ifndef MOVEMENT_HPP
+#define MOVEMENT_HPP
 
 #include <opencv2/core/core.hpp>
 
@@ -22,4 +22,4 @@ private:
 	cv::Mat background;
 };
 
-#endif // MOVEMENT_HPP_
+#endif // MOVEMENT_HPP
